@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PrintQuote - 3D print pricing calculator (offline)</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1d2230;--mute:#667;--acc:#e4572e;--line:#dcd9d0}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{padding:14px 20px;background:var(--ink);color:#fff}
+header h1{margin:0;font-size:20px}header small{color:#bbc}
+main{max-width:1060px;margin:0 auto;padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:800px){main{grid-template-columns:1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px}
+h2{margin:0 0 10px;font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--acc)}
+label{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:6px 0}
+label span{flex:1}
+input,select{width:120px;padding:6px;border:1px solid var(--line);border-radius:5px;font:inherit}
+input[type=text]{width:200px}
+button{padding:7px 12px;border:0;border-radius:5px;background:var(--ink);color:#fff;font:inherit;cursor:pointer}
+button.alt{background:#e9e6dd;color:var(--ink)}
+table{width:100%;border-collapse:collapse}
+td,th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:right}
+td:first-child,th:first-child{text-align:left}
+.big{font-size:30px;font-weight:700;color:var(--acc)}
+.mute{color:var(--mute);font-size:13px}
+.warn{color:#b00020;font-weight:600}
+.full{grid-column:1/-1}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+@media print{header,.noprint{display:none}main{display:block}section{border:0}}
+</style>
+</head>
+<body>
+<header><h1>PrintQuote</h1><small>Price a 3D print job in one screen. Works offline. Your numbers stay in this browser.</small></header>
+<main>
+<section class="noprint">
+<h2>Job</h2>
+<label><span>Job / item name</span><input type="text" id="name" value="Untitled job"></label>
+<label><span>Currency symbol</span><input type="text" id="cur" value="$" style="width:120px"></label>
+<label><span>Filament used per plate (g)</span><input type="number" id="grams" value="120" min="0" step="1"></label>
+<label><span>Print time per plate (hours)</span><input type="number" id="hours" value="6" min="0" step="0.1"></label>
+<label><span>Items per plate</span><input type="number" id="perPlate" value="1" min="1" step="1"></label>
+<label><span>Items ordered</span><input type="number" id="qty" value="1" min="1" step="1"></label>
+<label><span>Hands-on time per plate (min)<br><span class="mute">slicing, removal, supports, sanding</span></span><input type="number" id="laborMin" value="15" min="0" step="1"></label>
+<label><span>One-off design / setup time (min)</span><input type="number" id="setupMin" value="0" min="0" step="1"></label>
+<label><span>Packaging + extras per item</span><input type="number" id="pack" value="0.50" min="0" step="0.05"></label>
+</section>
+<section class="noprint">
+<h2>Your workshop (saved)</h2>
+<label><span>Filament price per kg</span><input type="number" id="kg" value="22" min="0" step="0.5"></label>
+<label><span>Printer power draw (W, average)</span><input type="number" id="watts" value="120" min="0" step="5"></label>
+<label><span>Electricity price per kWh</span><input type="number" id="kwh" value="0.17" min="0" step="0.01"></label>
+<label><span>Printer purchase price</span><input type="number" id="printer" value="600" min="0" step="10"></label>
+<label><span>Expected printer life (print hours)</span><input type="number" id="life" value="5000" min="1" step="100"></label>
+<label><span>Maintenance per print hour<br><span class="mute">nozzles, plates, belts</span></span><input type="number" id="maint" value="0.05" min="0" step="0.01"></label>
+<label><span>Your labor rate per hour</span><input type="number" id="rate" value="20" min="0" step="1"></label>
+<label><span>Failed-print rate (%)</span><input type="number" id="fail" value="8" min="0" max="90" step="1"></label>
+<h2 style="margin-top:14px">Selling</h2>
+<label><span>Marketplace + payment fee (% of price)<br><span class="mute">add up your platform's current rates</span></span><input type="number" id="feePct" value="0" min="0" max="80" step="0.1"></label>
+<label><span>Fixed fee per order</span><input type="number" id="feeFix" value="0" min="0" step="0.05"></label>
+<label><span>Target profit margin (% of price)</span><input type="number" id="margin" value="30" min="0" max="90" step="1"></label>
+</section>
+<section class="full" id="result">
+<h2>Quote: <span id="rName"></span></h2>
+<div>Price per item <span class="big" id="rPrice"></span> &nbsp; Order total <b id="rTotal"></b></div>
+<div class="mute" id="rNote"></div>
+<table style="margin-top:10px"><thead><tr><th>Cost line</th><th>Whole order</th><th>Per item</th><th>Share</th></tr></thead><tbody id="rows"></tbody></table>
+<div class="row noprint">
+<button id="save">Save quote</button>
+<button class="alt" id="print">Print / save as PDF</button>
+<button class="alt" id="csv">Export saved quotes (CSV)</button>
+</div>
+</section>
+<section class="full noprint">
+<h2>What if I charge...?</h2>
+<label><span>Enter a price per item to see what you really keep</span><input type="number" id="what" min="0" step="0.5" placeholder="e.g. 15"></label>
+<div id="whatOut" class="mute">Useful when the market price is fixed and you need to know whether the job is worth taking.</div>
+</section>
+<section class="full noprint">
+<h2>Saved quotes</h2>
+<table><thead><tr><th>Job</th><th>Qty</th><th>Cost / item</th><th>Price / item</th><th>Total</th><th></th></tr></thead><tbody id="saved"></tbody></table>
+<div class="mute" id="noSaved">Nothing saved yet.</div>
+</section>
+</main>
+<script>
+"use strict";
+var IDS=["name","cur","grams","hours","perPlate","qty","laborMin","setupMin","pack","kg","watts","kwh","printer","life","maint","rate","fail","feePct","feeFix","margin"];
+var KEY="printquote.v1";
+function $(id){return document.getElementById(id)}
+function num(id){var v=parseFloat($(id).value);return isFinite(v)&&v>=0?v:0}
+
+// Pure pricing function: takes plain numbers, returns the full breakdown.
+function compute(i){
+  var perPlate=Math.max(1,Math.floor(i.perPlate)),qty=Math.max(1,Math.floor(i.qty));
+  var plates=Math.ceil(qty/perPlate);
+  var failF=1/(1-Math.min(i.fail,90)/100);            // extra plates you must expect to reprint
+  var h=i.hours*plates*failF;
+  var lines=[
+    ["Filament",i.grams*plates*failF*i.kg/1000],
+    ["Electricity",i.watts/1000*h*i.kwh],
+    ["Printer wear",i.printer/Math.max(1,i.life)*h],
+    ["Maintenance",i.maint*h],
+    ["Hands-on labor",i.laborMin/60*i.rate*plates*failF],
+    ["Design / setup",i.setupMin/60*i.rate],
+    ["Packaging + extras",i.pack*qty]
+  ];
+  var cost=0;lines.forEach(function(l){cost+=l[1]});
+  var denom=1-i.feePct/100-i.margin/100;
+  var ok=denom>0.01;
+  var total=ok?(cost+i.feeFix)/denom:NaN;
+  var fees=ok?total*i.feePct/100+i.feeFix:NaN;
+  return {plates:plates,qty:qty,lines:lines,cost:cost,ok:ok,total:total,price:total/qty,fees:fees,profit:total-fees-cost};
+}
+// What you keep if the price per item is fixed by the market.
+function keep(i,price){
+  var r=compute(i),rev=price*r.qty,fees=rev*i.feePct/100+i.feeFix;
+  return {revenue:rev,fees:fees,profit:rev-fees-r.cost,margin:rev>0?(rev-fees-r.cost)/rev*100:0};
+}
+function inputs(){var o={};IDS.forEach(function(id){o[id]=(id==="name"||id==="cur")?$(id).value:num(id)});return o}
+function money(v){return isFinite(v)?$("cur").value+v.toFixed(2):"-"}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+
+function load(){try{return JSON.parse(localStorage.getItem(KEY))||{}}catch(e){return{}}}
+function store(s){try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){}}
+var state=load();state.quotes=state.quotes||[];
+
+function render(){
+  var i=inputs(),r=compute(i);
+  state.inputs=i;store(state);
+  $("rName").textContent=i.name;
+  $("rPrice").textContent=money(r.price);
+  $("rTotal").textContent=money(r.total);
+  $("rNote").innerHTML=r.ok
+    ? r.plates+" plate(s) for "+r.qty+" item(s). Cost "+money(r.cost/r.qty)+" per item; fees "+money(r.fees)+"; profit "+money(r.profit)+" on the order."
+    : '<span class="warn">Fees plus margin reach 100% of the price. Lower one of them.</span>';
+  var html="";
+  r.lines.forEach(function(l){
+    html+="<tr><td>"+l[0]+"</td><td>"+money(l[1])+"</td><td>"+money(l[1]/r.qty)+"</td><td>"+(r.cost>0?(l[1]/r.cost*100).toFixed(0):0)+"%</td></tr>";
+  });
+  html+="<tr><th>Total cost</th><th>"+money(r.cost)+"</th><th>"+money(r.cost/r.qty)+"</th><th></th></tr>";
+  $("rows").innerHTML=html;
+  var w=parseFloat($("what").value);
+  if(isFinite(w)&&w>0){
+    var k=keep(i,w);
+    $("whatOut").innerHTML="At "+money(w)+" per item: revenue "+money(k.revenue)+", fees "+money(k.fees)+", you keep <b"+(k.profit<0?' class="warn"':"")+">"+money(k.profit)+"</b> ("+k.margin.toFixed(0)+"% margin) after all costs including your labor.";
+  }
+  var s="";
+  state.quotes.forEach(function(q,n){
+    s+="<tr><td>"+esc(q.name)+"</td><td>"+q.qty+"</td><td>"+esc(q.cur)+q.costItem.toFixed(2)+"</td><td>"+esc(q.cur)+q.price.toFixed(2)+"</td><td>"+esc(q.cur)+q.total.toFixed(2)+'</td><td><button class="alt" data-load="'+n+'">Load</button> <button class="alt" data-del="'+n+'">x</button></td></tr>';
+  });
+  $("saved").innerHTML=s;$("noSaved").style.display=state.quotes.length?"none":"block";
+}
+function init(){
+  if(state.inputs)IDS.forEach(function(id){if(state.inputs[id]!==undefined)$(id).value=state.inputs[id]});
+  IDS.concat(["what"]).forEach(function(id){$(id).addEventListener("input",render)});
+  $("save").addEventListener("click",function(){
+    var i=inputs(),r=compute(i);if(!r.ok)return;
+    state.quotes.unshift({name:i.name,cur:i.cur,qty:r.qty,costItem:r.cost/r.qty,price:r.price,total:r.total,inputs:i,date:new Date().toISOString().slice(0,10)});
+    render();
+  });
+  $("print").addEventListener("click",function(){window.print()});
+  $("saved").addEventListener("click",function(e){
+    var t=e.target;
+    if(t.dataset.del!==undefined){state.quotes.splice(+t.dataset.del,1);render()}
+    else if(t.dataset.load!==undefined){var q=state.quotes[+t.dataset.load].inputs;IDS.forEach(function(id){$(id).value=q[id]});render()}
+  });
+  $("csv").addEventListener("click",function(){
+    var out="date,job,qty,cost_per_item,price_per_item,total\n";
+    state.quotes.forEach(function(q){out+=[q.date,'"'+q.name.replace(/"/g,'""')+'"',q.qty,q.costItem.toFixed(2),q.price.toFixed(2),q.total.toFixed(2)].join(",")+"\n"});
+    var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([out],{type:"text/csv"}));a.download="printquote-quotes.csv";a.click();
+  });
+  render();
+}
+if(typeof document!=="undefined")init();
+if(typeof module!=="undefined")module.exports={compute:compute,keep:keep};
+</script>
+</body>
+</html>
